@@ -35,7 +35,7 @@
     "diff": "^7.0.0",
     "dotenv": "^16.6.1",
     "gaxios": "^6.1.1",
-    "glob": "^10.4.5",
+    "glob": "^11.0.3",
     "google-auth-library": "^9.11.0",
     "html-to-text": "^9.0.5",
     "ignore": "^7.0.0",
