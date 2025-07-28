@@ -68,7 +68,7 @@ Easy LLM CLI supports connecting to any OpenAI-compatible LLM API. You can confi
 # Enable custom LLM support
 export USE_CUSTOM_LLM=true 
 
-export CUSTOM_LLM_PROVIDER="openai"  # LLM provider
+export CUSTOM_LLM_PROVIDER="openai"  # LLM provider, if you use azure openai, set to "azure"
 export CUSTOM_LLM_API_KEY="your-api-key"     # Your LLM provider API key
 export CUSTOM_LLM_ENDPOINT="https://api.your-llm-provider.com/v1"  # API endpoint
 export CUSTOM_LLM_MODEL_NAME="your-model-name"  # Model name
