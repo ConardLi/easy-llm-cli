@@ -66,6 +66,8 @@ Easy LLM 命令行工具支持连接到任何兼容 OpenAI 的 LLM API。你可�
 ```bash
 # 启用自定义 LLM 支持
 export USE_CUSTOM_LLM=true
+
+export CUSTOM_LLM_PROVIDER="openai"  # LLM provider, 如果你使用Azure OpneAI, set to "azure"
 export CUSTOM_LLM_API_KEY="your-api-key"     # 你的 LLM 提供商 API 密钥
 export CUSTOM_LLM_ENDPOINT="https://api.your-llm-provider.com/v1"  # API 端点
 export CUSTOM_LLM_MODEL_NAME="your-model-name"  # 模型名称
