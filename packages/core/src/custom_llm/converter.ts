@@ -341,7 +341,7 @@ export class ModelConverter {
       }
     }
 
-    if (choice.finish_reason === 'tool_calls' && toolCallMap.size > 0) {
+    if (choice?.finish_reason === 'tool_calls' && toolCallMap.size > 0) {
       const response = this.toGeminiStreamToolCallsResponse(toolCallMap);
       toolCallMap.clear();
       return {
