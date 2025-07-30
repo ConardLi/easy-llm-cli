@@ -12,7 +12,7 @@ import {
   EmbedContentResponse,
   EmbedContentParameters,
 } from '@google/genai';
-import {OpenAI, AzureOpenAI} from 'openai';
+import { OpenAI, AzureOpenAI } from 'openai';
 import { ContentGenerator } from '../core/contentGenerator.js';
 import { CustomLLMContentGeneratorConfig, ToolCallMap } from './types.js';
 import { extractToolFunctions } from './util.js';
