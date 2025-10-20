@@ -46,7 +46,7 @@
     "strip-ansi": "^7.1.0",
     "undici": "^7.10.0",
     "ws": "^8.18.0",
-    "openai": "^5.8.2"
+    "openai": "^6.5.0"
   },
   "devDependencies": {
     "@types/diff": "^7.0.2",
