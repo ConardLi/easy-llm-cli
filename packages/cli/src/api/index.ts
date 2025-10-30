@@ -83,7 +83,7 @@ export class ElcAgent {
     const extensions: any = this.extension
       ? [{ config: this.extension }]
       : loadExtensions(workspaceRoot);
-    const config = await loadCliConfig(settings.merged, extensions, sessionId,this.disableReadArgs);
+    const config = await loadCliConfig(settings.merged, extensions, sessionId, this.disableReadArgs);
 
     settings.setValue(
       SettingScope.User,
@@ -249,7 +249,7 @@ export class ElcAgent {
     for (let i = 0; i < this.results.length; i++) {
       const { type, content } = this.results[i];
       if (type === 'content') {
-        const latestIndex: number = result.length - 1;
+        const latestIndex: number = result.length === 0 ? 0 : result.length - 1;
         if (typeof result[latestIndex] === 'string') {
           result[latestIndex] += content;
         } else {
