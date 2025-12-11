@@ -53,7 +53,8 @@ const mcpServerStatusesInternal: Map<string, MCPServerStatus> = new Map();
  */
 let mcpDiscoveryState: MCPDiscoveryState = MCPDiscoveryState.NOT_STARTED;
 
-let mcpClient: Client | null = null;
+// Store all active MCP client connections
+const mcpClients: Map<string, Client> = new Map();
 
 /**
  * Event listeners for MCP server status changes
@@ -213,10 +214,14 @@ async function connectAndDiscover(
     return;
   }
 
-  mcpClient = new Client({
+  // Create a new client instance for each MCP server
+  const mcpClient = new Client({
     name: 'gemini-cli-mcp-client',
     version: '0.0.1',
   });
+
+  // Store the client for later cleanup
+  mcpClients.set(mcpServerName, mcpClient);
 
   // patch Client.callTool to use request timeout as genai McpCallTool.callTool does not do it
   // TODO: remove this hack once GenAI SDK does callTool with request options
@@ -255,15 +260,17 @@ async function connectAndDiscover(
       errorString += `\nMake sure it is available in the sandbox`;
     }
     console.error(errorString);
-    // Update status to disconnected
+    // Update status to disconnected and cleanup
     updateMCPServerStatus(mcpServerName, MCPServerStatus.DISCONNECTED);
+    mcpClients.delete(mcpServerName);
     return;
   }
 
   mcpClient.onerror = (error) => {
     console.error(`MCP ERROR (${mcpServerName}):`, error.toString());
-    // Update status to disconnected on error
+    // Update status to disconnected on error and cleanup
     updateMCPServerStatus(mcpServerName, MCPServerStatus.DISCONNECTED);
+    mcpClients.delete(mcpServerName);
   };
 
   if (transport instanceof StdioClientTransport && transport.stderr) {
@@ -291,8 +298,9 @@ async function connectAndDiscover(
       ) {
         await transport.close();
       }
-      // Update status to disconnected
+      // Update status to disconnected and cleanup
       updateMCPServerStatus(mcpServerName, MCPServerStatus.DISCONNECTED);
+      mcpClients.delete(mcpServerName);
       return;
     }
 
@@ -368,8 +376,9 @@ async function connectAndDiscover(
     ) {
       await transport.close();
     }
-    // Update status to disconnected
+    // Update status to disconnected and cleanup
     updateMCPServerStatus(mcpServerName, MCPServerStatus.DISCONNECTED);
+    mcpClients.delete(mcpServerName);
   }
 
   // If no tools were registered from this MCP server, the following 'if' block
@@ -387,8 +396,9 @@ async function connectAndDiscover(
       transport instanceof StreamableHTTPClientTransport
     ) {
       await transport.close();
-      // Update status to disconnected
+      // Update status to disconnected and cleanup
       updateMCPServerStatus(mcpServerName, MCPServerStatus.DISCONNECTED);
+      mcpClients.delete(mcpServerName);
     }
   }
 }
@@ -397,7 +407,13 @@ async function connectAndDiscover(
  * Close all MCP connections.
  */
 export async function closeAllMCPConnections() {
-  if (mcpClient) {
-    await mcpClient.close();
+  // Close all stored MCP client connections
+  for (const [serverName, client] of mcpClients.entries()) {
+    try {
+      await client.close();
+      mcpClients.delete(serverName);
+    } catch (error) {
+      console.error(`Error closing MCP client for ${serverName}:`, error);
+    }
   }
 }
