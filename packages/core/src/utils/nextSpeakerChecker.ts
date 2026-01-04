@@ -7,6 +7,7 @@
 import { Content, SchemaUnion, Type } from '@google/genai';
 import { GeminiClient } from '../core/client.js';
 import { GeminiChat } from '../core/geminiChat.js';
+import { getResponseTextFromParts } from './generateContentResponseUtilities.js';
 import { isFunctionResponse } from './messageInspectors.js';
 
 const CHECK_PROMPT = `Analyze *only* the content and structure of your immediately preceding response (your last turn in the conversation history). Based *strictly* on that response, determine who should logically speak next: the 'user' or the 'model' (you).
@@ -121,10 +122,51 @@ export async function checkNextSpeaker(
     return null;
   }
 
-  const contents: Content[] = [
-    ...curatedHistory,
-    { role: 'user', parts: [{ text: CHECK_PROMPT }] },
-  ];
+  const useCustomLLM =
+    process.env.USE_CUSTOM_LLM && process.env.USE_CUSTOM_LLM !== 'false';
+
+  if (useCustomLLM) {
+    const lastText = getResponseTextFromParts(lastMessage.parts ?? []) ?? '';
+    const trimmed = lastText.trim();
+
+    if (!trimmed) {
+      return {
+        reasoning:
+          'The last model message contained no text, so the model should speak next.',
+        next_speaker: 'model',
+      };
+    }
+
+    if (/[?？]\s*$/.test(trimmed)) {
+      return {
+        reasoning:
+          'The last model response ends with a question, so the user should speak next.',
+        next_speaker: 'user',
+      };
+    }
+
+    const looksIncomplete = /[:：…]\s*$/.test(trimmed) || /\.\.\.\s*$/.test(trimmed);
+    const indicatesImmediateNextAction =
+      /(^|\n)\s*(next|now|let me|i(?:'| a)m going to|i will|starting|moving on|proceeding)\b/i.test(
+        trimmed,
+      ) || /(让我|我先|我将|我会|接下来|下面|开始|继续)/.test(trimmed);
+
+    if (looksIncomplete || indicatesImmediateNextAction) {
+      return {
+        reasoning:
+          'The last model response indicates an immediate next action or looks incomplete, so the model should speak next.',
+        next_speaker: 'model',
+      };
+    }
+
+    return {
+      reasoning:
+        'The last model response appears complete and does not ask a question, so the user should speak next.',
+      next_speaker: 'user',
+    };
+  }
+
+  const contents: Content[] = [lastMessage, { role: 'user', parts: [{ text: CHECK_PROMPT }] }];
 
   try {
     const parsedResponse = (await geminiClient.generateJson(

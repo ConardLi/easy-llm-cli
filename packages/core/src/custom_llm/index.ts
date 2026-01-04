@@ -56,6 +56,12 @@ export class CustomLLMContentGenerator implements ContentGenerator {
   ): Promise<AsyncGenerator<GenerateContentResponse>> {
     const messages = ModelConverter.toOpenAIMessages(request);
     const tools = extractToolFunctions(request.config) || [];
+    if (process.env.EASY_LLM_CLI_DEBUG_TOOL_CALLS) {
+      console.error(
+        '[debug] openai tools:',
+        JSON.stringify(tools.map((t) => t.function?.name)),
+      );
+    }
     const stream = await this.model.chat.completions.create({
       messages,
       stream: true,
@@ -66,6 +72,31 @@ export class CustomLLMContentGenerator implements ContentGenerator {
     const map: ToolCallMap = new Map();
     return (async function* (): AsyncGenerator<GenerateContentResponse> {
       for await (const chunk of stream) {
+        if (process.env.EASY_LLM_CLI_DEBUG_TOOL_CALLS) {
+          const choice = chunk?.choices?.[0];
+          const delta = choice?.delta as any;
+          if (delta?.tool_calls) {
+            console.error(
+              '[debug] stream tool_calls:',
+              JSON.stringify(delta.tool_calls),
+            );
+          }
+          if (delta?.content) {
+            console.error('[debug] stream content:', JSON.stringify(delta.content));
+          }
+          if (delta?.reasoning_content) {
+            console.error(
+              '[debug] stream reasoning_content:',
+              JSON.stringify(delta.reasoning_content),
+            );
+          }
+          if (choice?.finish_reason) {
+            console.error(
+              '[debug] stream finish_reason:',
+              JSON.stringify(choice.finish_reason),
+            );
+          }
+        }
         const { response } = ModelConverter.processStreamChunk(chunk, map);
         if (response) {
           yield response;
@@ -87,9 +118,11 @@ export class CustomLLMContentGenerator implements ContentGenerator {
     request: GenerateContentParameters,
   ): Promise<GenerateContentResponse> {
     const messages = ModelConverter.toOpenAIMessages(request);
+    const wantsJson = request.config?.responseMimeType === 'application/json';
     const completion = await this.model.chat.completions.create({
       messages,
       stream: false,
+      ...(wantsJson ? { response_format: { type: 'json_object' } } : {}),
       ...this.config,
     });
 

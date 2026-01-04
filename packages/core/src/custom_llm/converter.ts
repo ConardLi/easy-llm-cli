@@ -162,33 +162,104 @@ export class ModelConverter {
     const choice = response.choices[0];
     const res = new GenerateContentResponse();
 
-    if (choice.message.content) {
+    const message = (choice.message || {}) as any;
+
+    if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
       res.candidates = [
         {
           content: {
-            parts: [{ text: choice.message.content }],
+            parts: message.tool_calls.map((toolCall: any) => {
+              let args: Record<string, unknown> = {};
+              const rawArgs = toolCall?.function?.arguments;
+              if (typeof rawArgs === 'string' && rawArgs.trim().length > 0) {
+                try {
+                  args = JSON.parse(rawArgs);
+                } catch {
+                  args = {};
+                }
+              }
+              const id =
+                typeof toolCall?.id === 'string' && toolCall.id.trim().length > 0
+                  ? toolCall.id
+                  : `call_${Math.random().toString(36).slice(2)}`;
+              return {
+                functionCall: {
+                  id,
+                  name: toolCall.function.name,
+                  args,
+                },
+              };
+            }),
             role: 'model',
           },
           index: 0,
           safetyRatings: [],
         },
       ];
-    } else if (choice.message.tool_calls) {
-      res.candidates = [
-        {
-          content: {
-            parts: choice.message.tool_calls.map((toolCall) => ({
-              functionCall: {
-                name: toolCall.function.name,
-                args: JSON.parse(toolCall.function.arguments),
-              },
-            })),
-            role: 'model',
+    } else {
+      const content = message.content;
+      const refusal = message.refusal;
+      const reasoningContent = message.reasoning_content;
+
+      let text: string | undefined;
+      if (typeof content === 'string' && content.trim().length > 0) {
+        text = content;
+      } else if (Array.isArray(content)) {
+        const segments = content
+          .map((part: any) => {
+            if (typeof part === 'string') {
+              return part;
+            }
+            if (typeof part === 'object' && part !== null && 'text' in part) {
+              return typeof part.text === 'string' ? part.text : '';
+            }
+            return '';
+          })
+          .filter(Boolean);
+        if (segments.length > 0) {
+          text = segments.join('');
+        }
+      } else if (typeof content === 'object' && content !== null) {
+        if (
+          'text' in content &&
+          typeof content.text === 'string' &&
+          content.text.trim().length > 0
+        ) {
+          text = content.text;
+        } else {
+          try {
+            text = JSON.stringify(content);
+          } catch {
+            text = String(content);
+          }
+        }
+      }
+
+      if (typeof text !== 'string' || text.trim().length === 0) {
+        if (typeof refusal === 'string' && refusal.trim().length > 0) {
+          text = refusal;
+        } else if (
+          typeof reasoningContent === 'string' &&
+          reasoningContent.trim().length > 0
+        ) {
+          text = reasoningContent;
+        } else if (typeof content === 'string') {
+          text = content;
+        }
+      }
+
+      if (typeof text === 'string') {
+        res.candidates = [
+          {
+            content: {
+              parts: [{ text }],
+              role: 'model',
+            },
+            index: 0,
+            safetyRatings: [],
           },
-          index: 0,
-          safetyRatings: [],
-        },
-      ];
+        ];
+      }
     }
     res.usageMetadata = {
       promptTokenCount: response.usage?.prompt_tokens || 0,
@@ -228,13 +299,24 @@ export class ModelConverter {
       {
         content: {
           parts: Array.from(toolCallMap.entries()).map(
-            ([_index, toolCall]) => ({
-              functionCall: {
-                id: `call_${Math.random().toString(36).slice(2)}`,
-                name: toolCall.name,
-                args: toolCall.arguments ? JSON.parse(toolCall.arguments) : {},
-              },
-            }),
+            ([_index, toolCall]) => {
+              let args: Record<string, unknown> = {};
+              if (toolCall.arguments && toolCall.arguments.trim().length > 0) {
+                try {
+                  args = JSON.parse(toolCall.arguments);
+                } catch {
+                  args = {};
+                }
+              }
+              return {
+                functionCall: {
+                  id:
+                    toolCall.id || `call_${Math.random().toString(36).slice(2)}`,
+                  name: toolCall.name,
+                  args,
+                },
+              };
+            },
           ),
           role: 'model',
         },
@@ -297,9 +379,14 @@ export class ModelConverter {
   ): void {
     const idx = toolCall.index;
     const current = toolCallMap.get(idx) || {
+      id: '',
       name: '',
       arguments: '',
     };
+
+    if (toolCall.id) {
+      current.id = toolCall.id;
+    }
 
     if (toolCall.function?.name) {
       current.name = toolCall.function.name;
@@ -319,14 +406,8 @@ export class ModelConverter {
     chunk: OpenAI.Chat.Completions.ChatCompletionChunk,
     toolCallMap: ToolCallMap,
   ): { response: GenerateContentResponse | null; shouldReturn: boolean } {
-    if (chunk.usage && chunk.usage.total_tokens) {
-      return {
-        response: this.toGeminiStreamUsageResponse(chunk.usage),
-        shouldReturn: true,
-      };
-    }
-
-    const choice = chunk.choices[0];
+    const usage = chunk.usage;
+    const choice = chunk.choices?.[0];
 
     if (choice?.delta?.content) {
       return {
@@ -341,9 +422,16 @@ export class ModelConverter {
       }
     }
 
-    if (choice.finish_reason === 'tool_calls' && toolCallMap.size > 0) {
+    if (choice?.finish_reason === 'tool_calls' && toolCallMap.size > 0) {
       const response = this.toGeminiStreamToolCallsResponse(toolCallMap);
       toolCallMap.clear();
+      if (usage?.total_tokens) {
+        response.usageMetadata = {
+          promptTokenCount: usage.prompt_tokens || 0,
+          candidatesTokenCount: usage.completion_tokens || 0,
+          totalTokenCount: usage.total_tokens || 0,
+        };
+      }
       return {
         response,
         shouldReturn: false,
@@ -351,8 +439,20 @@ export class ModelConverter {
     }
 
     if (choice?.finish_reason) {
+      const response = this.toGeminiStreamEndResponse();
+      if (usage?.total_tokens) {
+        response.usageMetadata = {
+          promptTokenCount: usage.prompt_tokens || 0,
+          candidatesTokenCount: usage.completion_tokens || 0,
+          totalTokenCount: usage.total_tokens || 0,
+        };
+      }
+      return { response, shouldReturn: true };
+    }
+
+    if (usage?.total_tokens) {
       return {
-        response: this.toGeminiStreamEndResponse(),
+        response: this.toGeminiStreamUsageResponse(usage),
         shouldReturn: true,
       };
     }
