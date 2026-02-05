@@ -12,7 +12,7 @@ import {
   EmbedContentResponse,
   EmbedContentParameters,
 } from '@google/genai';
-import OpenAI from 'openai';
+import { OpenAI, AzureOpenAI } from 'openai';
 import { ContentGenerator } from '../core/contentGenerator.js';
 import { CustomLLMContentGeneratorConfig, ToolCallMap } from './types.js';
 import { extractToolFunctions } from './util.js';
@@ -23,6 +23,7 @@ export class CustomLLMContentGenerator implements ContentGenerator {
   private apiKey: string = process.env.CUSTOM_LLM_API_KEY || '';
   private baseURL: string = process.env.CUSTOM_LLM_ENDPOINT || '';
   private modelName: string = process.env.CUSTOM_LLM_MODEL_NAME || '';
+  private apiVersion: string = process.env.OPENAI_API_VERSION || '2024-12-01-preview';
   private temperature: number = Number(process.env.CUSTOM_LLM_TEMPERATURE || 0);
   private maxTokens: number = Number(process.env.CUSTOM_LLM_MAX_TOKENS || 8192);
   private topP: number = Number(process.env.CUSTOM_LLM_TOP_P || 1);
@@ -34,11 +35,20 @@ export class CustomLLMContentGenerator implements ContentGenerator {
   };
 
   constructor() {
-    this.model = new OpenAI({
-      apiKey: this.apiKey,
-      baseURL: this.baseURL,
-    });
-  }
+      const provider = process.env.CUSTOM_LLM_PROVIDER || 'openai';
+      if (provider === 'azure') {
+        this.model = new AzureOpenAI({
+          apiKey: this.apiKey,
+          endpoint: this.baseURL,
+          apiVersion: this.apiVersion
+        });
+      } else {
+        this.model = new OpenAI({
+          apiKey: this.apiKey,
+          baseURL: this.baseURL
+        });
+      }
+    }
 
   /**
    * Asynchronously generates content responses in a streaming fashion.
