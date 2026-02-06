@@ -47,6 +47,7 @@ describe('checkNextSpeaker', () => {
   const abortSignal = new AbortController().signal;
 
   beforeEach(() => {
+    vi.stubEnv('USE_CUSTOM_LLM', 'false');
     MockConfig = vi.mocked(Config);
     const mockConfigInstance = new MockConfig(
       'test-api-key',
@@ -81,6 +82,7 @@ describe('checkNextSpeaker', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it('should return null if history is empty', async () => {
@@ -104,6 +106,22 @@ describe('checkNextSpeaker', () => {
       abortSignal,
     );
     expect(result).toBeNull();
+    expect(mockGeminiClient.generateJson).not.toHaveBeenCalled();
+  });
+
+  it('should not call generateJson when using a custom LLM', async () => {
+    vi.stubEnv('USE_CUSTOM_LLM', '1');
+    (chatInstance.getHistory as Mock).mockReturnValue([
+      { role: 'model', parts: [{ text: 'Let me check Podfile:' }] },
+    ] as Content[]);
+
+    const result = await checkNextSpeaker(
+      chatInstance,
+      mockGeminiClient,
+      abortSignal,
+    );
+
+    expect(result?.next_speaker).toBe('model');
     expect(mockGeminiClient.generateJson).not.toHaveBeenCalled();
   });
 

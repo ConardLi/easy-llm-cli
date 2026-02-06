@@ -21,6 +21,7 @@ export interface CustomLLMContentGeneratorConfig {
  * Tool call data structure for streaming
  */
 export interface ToolCallData {
+  id: string;
   name: string;
   arguments: string;
 }
